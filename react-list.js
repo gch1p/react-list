@@ -72,7 +72,8 @@
         threshold: _react.PropTypes.number,
         type: _react.PropTypes.oneOf(['simple', 'variable', 'uniform']),
         useTranslate3d: _react.PropTypes.bool,
-        onScroll: _react.PropTypes.func
+        onScroll: _react.PropTypes.func,
+        customOnWheel: _react.PropTypes.bool
       },
       enumerable: true
     }, {
@@ -101,7 +102,8 @@
         threshold: 100,
         type: 'simple',
         useTranslate3d: false,
-        onScroll: null
+        onScroll: null,
+        customOnWheel: false
       },
       enumerable: true
     }]);
@@ -118,6 +120,16 @@
         if (_this.props.onScroll) {
           _this.props.onScroll(event);
         }
+      };
+
+      this.onWheel = function (e) {
+        if (!_this.props.customOnWheel) {
+          return;
+        }
+        e.preventDefault();
+        _this.scrollParent.scrollLeft += e.deltaX;
+        _this.scrollParent.scrollTop += e.deltaY;
+        return false;
       };
 
       var _props = this.props;
@@ -168,6 +180,7 @@
         window.removeEventListener('resize', this.updateFrame);
         this.scrollParent.removeEventListener('scroll', this.onScroll);
         this.scrollParent.removeEventListener('mousewheel', NOOP);
+        this.scrollParent.removeEventListener('wheel', this.onWheel);
       }
     }, {
       key: 'getOffset',
@@ -315,9 +328,11 @@
         if (prev) {
           prev.removeEventListener('scroll', this.onScroll);
           prev.removeEventListener('mousewheel', NOOP);
+          prev.removeEventListener('wheel', this.onWheel);
         }
         this.scrollParent.addEventListener('scroll', this.onScroll);
         this.scrollParent.addEventListener('mousewheel', NOOP);
+        this.scrollParent.addEventListener('wheel', this.onWheel);
       }
     }, {
       key: 'updateSimpleFrame',

@@ -37,7 +37,8 @@ export default class extends Component {
     threshold: PropTypes.number,
     type: PropTypes.oneOf(['simple', 'variable', 'uniform']),
     useTranslate3d: PropTypes.bool,
-    onScroll: PropTypes.func
+    onScroll: PropTypes.func,
+    customOnWheel: PropTypes.bool
   };
 
   static defaultProps = {
@@ -52,7 +53,8 @@ export default class extends Component {
     threshold: 100,
     type: 'simple',
     useTranslate3d: false,
-    onScroll: null
+    onScroll: null,
+    customOnWheel: false
   };
 
   constructor(props) {
@@ -88,6 +90,7 @@ export default class extends Component {
     window.removeEventListener('resize', this.updateFrame);
     this.scrollParent.removeEventListener('scroll', this.onScroll);
     this.scrollParent.removeEventListener('mousewheel', NOOP);
+    this.scrollParent.removeEventListener('wheel', this.onWheel);
   }
 
   getOffset(el) {
@@ -215,9 +218,11 @@ export default class extends Component {
     if (prev) {
       prev.removeEventListener('scroll', this.onScroll);
       prev.removeEventListener('mousewheel', NOOP);
+      prev.removeEventListener('wheel', this.onWheel);
     }
     this.scrollParent.addEventListener('scroll', this.onScroll);
     this.scrollParent.addEventListener('mousewheel', NOOP);
+    this.scrollParent.addEventListener('wheel', this.onWheel);
   }
 
   updateSimpleFrame(cb) {
@@ -390,10 +395,20 @@ export default class extends Component {
   }
 
   onScroll = (event) => {
-    this.updateFrame()
+    this.updateFrame();
     if (this.props.onScroll) {
-      this.props.onScroll(event)
+      this.props.onScroll(event);
     }
+  }
+
+  onWheel = (e) => {
+    if (!this.props.customOnWheel) {
+      return;
+    }
+    e.preventDefault();
+    this.scrollParent.scrollLeft += e.deltaX;
+    this.scrollParent.scrollTop += e.deltaY;
+    return false;
   }
 
   renderItems() {
