@@ -129,7 +129,7 @@ module.exports = class ReactList extends Component {
   componentWillUnmount() {
     window.removeEventListener('resize', this.updateFrame);
     this.scrollParent.removeEventListener('wheel', this.onWheel, PASSIVE);
-    this.scrollParent.removeEventListener('scroll', this.updateFrame, PASSIVE);
+    this.scrollParent.removeEventListener('scroll', this.onScroll, PASSIVE);
     this.scrollParent.removeEventListener('mousewheel', NOOP, PASSIVE);
   }
 
@@ -250,6 +250,13 @@ module.exports = class ReactList extends Component {
     return {itemSize, itemsPerRow};
   }
 
+  onScroll = () => {
+    this.updateFrame()
+    if (this.props.onScroll) {
+      this.props.onScroll(event);
+    }
+  }
+
   updateFrame(cb) {
     this.updateScrollParent();
     if (typeof cb != 'function') cb = NOOP;
@@ -258,10 +265,6 @@ module.exports = class ReactList extends Component {
     case 'variable': this.updateVariableFrame(cb); break;
     case 'uniform': this.updateUniformFrame(cb); break;
     }
-
-    if (this.props.onScroll) {
-      this.props.onScroll(event);
-    }
   }
 
   updateScrollParent() {
@@ -269,12 +272,12 @@ module.exports = class ReactList extends Component {
     this.scrollParent = this.getScrollParent();
     if (prev === this.scrollParent) return;
     if (prev) {
-      prev.removeEventListener('scroll', this.updateFrame, PASSIVE);
+      prev.removeEventListener('scroll', this.onScroll, PASSIVE);
       prev.removeEventListener('mousewheel', NOOP, PASSIVE);
       prev.removeEventListener('wheel', this.onWheel, PASSIVE);
     }
     this.scrollParent.addEventListener('wheel', this.onWheel, PASSIVE);
-    this.scrollParent.addEventListener('scroll', this.updateFrame, PASSIVE);
+    this.scrollParent.addEventListener('scroll', this.onScroll, PASSIVE);
     this.scrollParent.addEventListener('mousewheel', NOOP, PASSIVE);
   }
 
