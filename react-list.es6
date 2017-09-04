@@ -251,7 +251,7 @@ module.exports = class ReactList extends Component {
   }
 
   onScroll = () => {
-    this.updateFrame()
+    this.updateFrame();
     if (this.props.onScroll) {
       this.props.onScroll(event);
     }

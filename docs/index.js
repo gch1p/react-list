@@ -21674,6 +21674,16 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
       var _this = _possibleConstructorReturn(this, (ReactList.__proto__ || Object.getPrototypeOf(ReactList)).call(this, props));
 
+      _this.onWheel = function (e) {
+        if (!_this.props.customOnWheel) {
+          return;
+        }
+        e.preventDefault();
+        _this.scrollParent.scrollLeft += e.deltaX;
+        _this.scrollParent.scrollTop += e.deltaY;
+        return false;
+      };
+
       var initialIndex = props.initialIndex;
 
       var itemsPerRow = 1;
@@ -21740,6 +21750,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       key: 'componentWillUnmount',
       value: function componentWillUnmount() {
         window.removeEventListener('resize', this.updateFrame);
+        this.scrollParent.removeEventListener('wheel', this.onWheel, PASSIVE);
         this.scrollParent.removeEventListener('scroll', this.updateFrame, PASSIVE);
         this.scrollParent.removeEventListener('mousewheel', NOOP, PASSIVE);
       }
@@ -21891,11 +21902,15 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         if (typeof cb != 'function') cb = NOOP;
         switch (this.props.type) {
           case 'simple':
-            return this.updateSimpleFrame(cb);
+            this.updateSimpleFrame(cb);break;
           case 'variable':
-            return this.updateVariableFrame(cb);
+            this.updateVariableFrame(cb);break;
           case 'uniform':
-            return this.updateUniformFrame(cb);
+            this.updateUniformFrame(cb);break;
+        }
+
+        if (this.props.onScroll) {
+          this.props.onScroll(event);
         }
       }
     }, {
@@ -21905,9 +21920,11 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         this.scrollParent = this.getScrollParent();
         if (prev === this.scrollParent) return;
         if (prev) {
-          prev.removeEventListener('scroll', this.updateFrame);
-          prev.removeEventListener('mousewheel', NOOP);
+          prev.removeEventListener('scroll', this.updateFrame, PASSIVE);
+          prev.removeEventListener('mousewheel', NOOP, PASSIVE);
+          prev.removeEventListener('wheel', this.onWheel, PASSIVE);
         }
+        this.scrollParent.addEventListener('wheel', this.onWheel, PASSIVE);
         this.scrollParent.addEventListener('scroll', this.updateFrame, PASSIVE);
         this.scrollParent.addEventListener('mousewheel', NOOP, PASSIVE);
       }
@@ -22202,8 +22219,10 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     scrollParentGetter: _propTypes2.default.func,
     threshold: _propTypes2.default.number,
     type: _propTypes2.default.oneOf(['simple', 'variable', 'uniform']),
-    useStaticSize: _propTypes2.default.bool,
-    useTranslate3d: _propTypes2.default.bool
+    useTranslate3d: _propTypes2.default.bool,
+    onScroll: _propTypes2.default.func,
+    customOnWheel: _propTypes2.default.bool,
+    useStaticSize: _propTypes2.default.bool
   }, _class.defaultProps = {
     axis: 'y',
     itemRenderer: function itemRenderer(index, key) {
@@ -22217,6 +22236,8 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
     pageSize: 10,
     threshold: 100,
     type: 'simple',
+    onScroll: null,
+    customOnWheel: false,
     useStaticSize: false,
     useTranslate3d: false
   }, _temp);
