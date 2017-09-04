@@ -1,14 +1,6 @@
-import React, {Component, PropTypes} from 'react';
-import ReactDOM from 'react-dom';
-
-const {findDOMNode} = ReactDOM;
-
-const isEqualSubset = (a, b) => {
-  for (let key in a) if (a[key] !== b[key]) return false;
-  return true;
-};
-
-const isEqual = (a, b) => isEqualSubset(a, b) && isEqualSubset(b, a);
+import module from 'module';
+import PropTypes from 'prop-types';
+import React, {Component} from 'react';
 
 const CLIENT_SIZE_KEYS = {x: 'clientWidth', y: 'clientHeight'};
 const CLIENT_START_KEYS = {x: 'clientTop', y: 'clientLeft'};
@@ -22,54 +14,84 @@ const SIZE_KEYS = {x: 'width', y: 'height'};
 
 const NOOP = () => {};
 
-export default class extends Component {
+// If a browser doesn't support the `options` argument to
+// add/removeEventListener, we need to check, otherwise we will
+// accidentally set `capture` with a truthy value.
+const PASSIVE = (() => {
+  if (typeof window === 'undefined') return false;
+  let hasSupport = false;
+  try {
+    document.createElement('div').addEventListener('test', NOOP, {
+      get passive() {
+        hasSupport = true;
+        return false;
+      }
+    });
+  } catch (e) {}
+  return hasSupport;
+})() ? {passive: true} : false;
+
+const UNSTABLE_MESSAGE = 'ReactList failed to reach a stable state.';
+const MAX_SYNC_UPDATES = 100;
+
+const isEqualSubset = (a, b) => {
+  for (let key in b) if (a[key] !== b[key]) return false;
+
+  return true;
+};
+
+module.exports = class ReactList extends Component {
   static displayName = 'ReactList';
 
   static propTypes = {
     axis: PropTypes.oneOf(['x', 'y']),
     initialIndex: PropTypes.number,
-    itemSizeGetter: PropTypes.func,
     itemRenderer: PropTypes.func,
+    itemSizeEstimator: PropTypes.func,
+    itemSizeGetter: PropTypes.func,
     itemsRenderer: PropTypes.func,
     length: PropTypes.number,
+    minSize: PropTypes.number,
     pageSize: PropTypes.number,
     scrollParentGetter: PropTypes.func,
     threshold: PropTypes.number,
     type: PropTypes.oneOf(['simple', 'variable', 'uniform']),
     useTranslate3d: PropTypes.bool,
     onScroll: PropTypes.func,
-    customOnWheel: PropTypes.bool
+    customOnWheel: PropTypes.bool,
+    useStaticSize: PropTypes.bool
   };
 
   static defaultProps = {
     axis: 'y',
-    initialIndex: null,
-    itemSizeGetter: null,
     itemRenderer: (index, key) => <div key={key}>{index}</div>,
     itemsRenderer: (items, ref) => <div ref={ref}>{items}</div>,
     length: 0,
+    minSize: 1,
     pageSize: 10,
-    scrollParentGetter: null,
     threshold: 100,
     type: 'simple',
-    useTranslate3d: false,
     onScroll: null,
-    customOnWheel: false
+    customOnWheel: false,
+    useStaticSize: false,
+    useTranslate3d: false
   };
 
   constructor(props) {
     super(props);
-    const {initialIndex, pageSize} = this.props;
+    const {initialIndex} = props;
     const itemsPerRow = 1;
-    const {from, size} =
-      this.constrain(initialIndex, pageSize, itemsPerRow, this.props);
+    const {from, size} = this.constrain(initialIndex, 0, itemsPerRow, props);
     this.state = {from, size, itemsPerRow};
     this.cache = {};
+    this.prevPrevState = {};
+    this.unstable = false;
+    this.updateCounter = 0;
   }
 
   componentWillReceiveProps(next) {
     let {from, size, itemsPerRow} = this.state;
-    this.setState(this.constrain(from, size, itemsPerRow, next));
+    this.maybeSetState(this.constrain(from, size, itemsPerRow, next), NOOP);
   }
 
   componentDidMount() {
@@ -78,19 +100,37 @@ export default class extends Component {
     this.updateFrame(this.scrollTo.bind(this, this.props.initialIndex));
   }
 
-  shouldComponentUpdate(props, state) {
-    return !isEqual(props, this.props) || !isEqual(state, this.state);
+  componentDidUpdate() {
+
+    // If the list has reached an unstable state, prevent an infinite loop.
+    if (this.unstable) return;
+
+    if (++this.updateCounter > MAX_SYNC_UPDATES) {
+      this.unstable = true;
+      return console.error(UNSTABLE_MESSAGE);
+    }
+
+    if (!this.updateCounterTimeoutId) {
+      this.updateCounterTimeoutId = setTimeout(() => {
+        this.updateCounter = 0;
+        delete this.updateCounterTimeoutId;
+      }, 0);
+    }
+
+    this.updateFrame();
   }
 
-  componentDidUpdate() {
-    this.updateFrame();
+  maybeSetState(b, cb) {
+    if (isEqualSubset(this.state, b)) return cb();
+
+    this.setState(b, cb);
   }
 
   componentWillUnmount() {
     window.removeEventListener('resize', this.updateFrame);
-    this.scrollParent.removeEventListener('scroll', this.onScroll);
-    this.scrollParent.removeEventListener('mousewheel', NOOP);
-    this.scrollParent.removeEventListener('wheel', this.onWheel);
+    this.scrollParent.removeEventListener('wheel', this.onWheel, PASSIVE);
+    this.scrollParent.removeEventListener('scroll', this.updateFrame, PASSIVE);
+    this.scrollParent.removeEventListener('mousewheel', NOOP, PASSIVE);
   }
 
   getOffset(el) {
@@ -101,10 +141,14 @@ export default class extends Component {
     return offset;
   }
 
+  getEl() {
+    return this.el || this.items;
+  }
+
   getScrollParent() {
     const {axis, scrollParentGetter} = this.props;
     if (scrollParentGetter) return scrollParentGetter();
-    let el = findDOMNode(this);
+    let el = this.getEl();
     const overflowKey = OVERFLOW_KEYS[axis];
     while (el = el.parentElement) {
       switch (window.getComputedStyle(el)[overflowKey]) {
@@ -126,14 +170,14 @@ export default class extends Component {
       scrollParent[scrollKey];
     const max = this.getScrollSize() - this.getViewportSize();
     const scroll = Math.max(0, Math.min(actual, max));
-    const el = findDOMNode(this);
+    const el = this.getEl();
     return this.getOffset(scrollParent) + scroll - this.getOffset(el);
   }
 
   setScroll(offset) {
     const {scrollParent} = this;
     const {axis} = this.props;
-    offset += this.getOffset(findDOMNode(this));
+    offset += this.getOffset(this.getEl());
     if (scrollParent === window) return window.scrollTo(0, offset);
 
     offset -= this.getOffset(this.scrollParent);
@@ -150,10 +194,11 @@ export default class extends Component {
 
   getScrollSize() {
     const {scrollParent} = this;
-    const {axis} = this.props;
+    const {body, documentElement} = document;
+    const key = SCROLL_SIZE_KEYS[this.props.axis];
     return scrollParent === window ?
-      document.body[SCROLL_SIZE_KEYS[axis]] :
-      scrollParent[SCROLL_SIZE_KEYS[axis]];
+      Math.max(body[key], documentElement[key]) :
+      scrollParent[key];
   }
 
   hasDeterminateSize() {
@@ -172,7 +217,13 @@ export default class extends Component {
   }
 
   getItemSizeAndItemsPerRow() {
-    const itemEls = findDOMNode(this.items).children;
+    const {axis, useStaticSize} = this.props;
+    let {itemSize, itemsPerRow} = this.state;
+    if (useStaticSize && itemSize && itemsPerRow) {
+      return {itemSize, itemsPerRow};
+    }
+
+    const itemEls = this.items.children;
     if (!itemEls.length) return {};
 
     const firstEl = itemEls[0];
@@ -181,8 +232,6 @@ export default class extends Component {
     // thousandths of a pixel) different size for the same element between
     // renders. This can cause an infinite render loop, so only change the
     // itemSize when it is significantly different.
-    let {itemSize} = this.state;
-    const {axis} = this.props;
     const firstElSize = firstEl[OFFSET_SIZE_KEYS[axis]];
     const delta = Math.abs(firstElSize - itemSize);
     if (isNaN(delta) || delta >= 1) itemSize = firstElSize;
@@ -191,7 +240,7 @@ export default class extends Component {
 
     const startKey = OFFSET_START_KEYS[axis];
     const firstStart = firstEl[startKey];
-    let itemsPerRow = 1;
+    itemsPerRow = 1;
     for (
       let item = itemEls[itemsPerRow];
       item && item[startKey] === firstStart;
@@ -205,9 +254,13 @@ export default class extends Component {
     this.updateScrollParent();
     if (typeof cb != 'function') cb = NOOP;
     switch (this.props.type) {
-    case 'simple': return this.updateSimpleFrame(cb);
-    case 'variable': return this.updateVariableFrame(cb);
-    case 'uniform': return this.updateUniformFrame(cb);
+    case 'simple': this.updateSimpleFrame(cb); break;
+    case 'variable': this.updateVariableFrame(cb); break;
+    case 'uniform': this.updateUniformFrame(cb); break;
+    }
+
+    if (this.props.onScroll) {
+      this.props.onScroll(event);
     }
   }
 
@@ -216,18 +269,18 @@ export default class extends Component {
     this.scrollParent = this.getScrollParent();
     if (prev === this.scrollParent) return;
     if (prev) {
-      prev.removeEventListener('scroll', this.onScroll);
-      prev.removeEventListener('mousewheel', NOOP);
-      prev.removeEventListener('wheel', this.onWheel);
+      prev.removeEventListener('scroll', this.updateFrame, PASSIVE);
+      prev.removeEventListener('mousewheel', NOOP, PASSIVE);
+      prev.removeEventListener('wheel', this.onWheel, PASSIVE);
     }
-    this.scrollParent.addEventListener('scroll', this.onScroll);
-    this.scrollParent.addEventListener('mousewheel', NOOP);
-    this.scrollParent.addEventListener('wheel', this.onWheel);
+    this.scrollParent.addEventListener('wheel', this.onWheel, PASSIVE);
+    this.scrollParent.addEventListener('scroll', this.updateFrame, PASSIVE);
+    this.scrollParent.addEventListener('mousewheel', NOOP, PASSIVE);
   }
 
   updateSimpleFrame(cb) {
     const {end} = this.getStartAndEnd();
-    const itemEls = findDOMNode(this.items).children;
+    const itemEls = this.items.children;
     let elEnd = 0;
 
     if (itemEls.length) {
@@ -241,7 +294,8 @@ export default class extends Component {
     if (elEnd > end) return cb();
 
     const {pageSize, length} = this.props;
-    this.setState({size: Math.min(this.state.size + pageSize, length)}, cb);
+    const size = Math.min(this.state.size + pageSize, length);
+    this.maybeSetState({size}, cb);
   }
 
   updateVariableFrame(cb) {
@@ -273,7 +327,7 @@ export default class extends Component {
       ++size;
     }
 
-    this.setState({from, size}, cb);
+    this.maybeSetState({from, size}, cb);
   }
 
   updateUniformFrame(cb) {
@@ -290,7 +344,7 @@ export default class extends Component {
       this.props
     );
 
-    return this.setState({itemsPerRow, from, itemSize, size}, cb);
+    return this.maybeSetState({itemsPerRow, from, itemSize, size}, cb);
   }
 
   getSpaceBefore(index, cache = {}) {
@@ -321,7 +375,7 @@ export default class extends Component {
   cacheSizes() {
     const {cache} = this;
     const {from} = this.state;
-    const itemEls = findDOMNode(this.items).children;
+    const itemEls = this.items.children;
     const sizeKey = OFFSET_SIZE_KEYS[this.props.axis];
     for (let i = 0, l = itemEls.length; i < l; ++i) {
       cache[from + i] = itemEls[i][sizeKey];
@@ -330,7 +384,7 @@ export default class extends Component {
 
   getSizeOf(index) {
     const {cache, items} = this;
-    const {axis, itemSizeGetter, type} = this.props;
+    const {axis, itemSizeGetter, itemSizeEstimator, type} = this.props;
     const {from, itemSize, size} = this.state;
 
     // Try the static itemSize.
@@ -344,13 +398,16 @@ export default class extends Component {
 
     // Try the DOM.
     if (type === 'simple' && index >= from && index < from + size && items) {
-      const itemEl = findDOMNode(items).children[index - from];
+      const itemEl = items.children[index - from];
       if (itemEl) return itemEl[OFFSET_SIZE_KEYS[axis]];
     }
+
+    // Try the itemSizeEstimator.
+    if (itemSizeEstimator) return itemSizeEstimator(index, cache);
   }
 
-  constrain(from, size, itemsPerRow, {length, pageSize, type}) {
-    size = Math.max(size, pageSize);
+  constrain(from, size, itemsPerRow, {length, minSize, type}) {
+    size = Math.max(size, minSize);
     let mod = size % itemsPerRow;
     if (mod) size += itemsPerRow - mod;
     if (size > length) size = length;
@@ -392,13 +449,6 @@ export default class extends Component {
       if (first != null && itemStart < end) last = i;
     }
     return [first, last];
-  }
-
-  onScroll = (event) => {
-    this.updateFrame();
-    if (this.props.onScroll) {
-      this.props.onScroll(event);
-    }
   }
 
   onWheel = (e) => {
@@ -446,6 +496,10 @@ export default class extends Component {
       WebkitTransform: transform,
       transform
     };
-    return <div {...{style}}><div style={listStyle}>{items}</div></div>;
+    return (
+      <div {...{style}} ref={c => this.el = c}>
+        <div style={listStyle}>{items}</div>
+      </div>
+    );
   }
-}
+};
