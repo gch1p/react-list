@@ -21674,6 +21674,13 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
 
       var _this = _possibleConstructorReturn(this, (ReactList.__proto__ || Object.getPrototypeOf(ReactList)).call(this, props));
 
+      _this.onScroll = function () {
+        _this.updateFrame();
+        if (_this.props.onScroll) {
+          _this.props.onScroll(event);
+        }
+      };
+
       _this.onWheel = function (e) {
         if (!_this.props.customOnWheel) {
           return;
@@ -21751,7 +21758,7 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
       value: function componentWillUnmount() {
         window.removeEventListener('resize', this.updateFrame);
         this.scrollParent.removeEventListener('wheel', this.onWheel, PASSIVE);
-        this.scrollParent.removeEventListener('scroll', this.updateFrame, PASSIVE);
+        this.scrollParent.removeEventListener('scroll', this.onScroll, PASSIVE);
         this.scrollParent.removeEventListener('mousewheel', NOOP, PASSIVE);
       }
     }, {
@@ -21908,10 +21915,6 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
           case 'uniform':
             this.updateUniformFrame(cb);break;
         }
-
-        if (this.props.onScroll) {
-          this.props.onScroll(event);
-        }
       }
     }, {
       key: 'updateScrollParent',
@@ -21920,12 +21923,12 @@ var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol
         this.scrollParent = this.getScrollParent();
         if (prev === this.scrollParent) return;
         if (prev) {
-          prev.removeEventListener('scroll', this.updateFrame, PASSIVE);
+          prev.removeEventListener('scroll', this.onScroll, PASSIVE);
           prev.removeEventListener('mousewheel', NOOP, PASSIVE);
           prev.removeEventListener('wheel', this.onWheel, PASSIVE);
         }
         this.scrollParent.addEventListener('wheel', this.onWheel, PASSIVE);
-        this.scrollParent.addEventListener('scroll', this.updateFrame, PASSIVE);
+        this.scrollParent.addEventListener('scroll', this.onScroll, PASSIVE);
         this.scrollParent.addEventListener('mousewheel', NOOP, PASSIVE);
       }
     }, {
