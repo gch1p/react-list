@@ -218,9 +218,8 @@
       key: 'componentWillUnmount',
       value: function componentWillUnmount() {
         window.removeEventListener('resize', this.updateFrame);
-        this.scrollParent.removeEventListener('wheel', this.onWheel, PASSIVE);
+        this.scrollParent.removeEventListener('wheel', this.onWheel);
         this.scrollParent.removeEventListener('scroll', this.onScroll, PASSIVE);
-        this.scrollParent.removeEventListener('mousewheel', NOOP);
       }
     }, {
       key: 'getOffset',
@@ -385,12 +384,10 @@
         if (prev === this.scrollParent) return;
         if (prev) {
           prev.removeEventListener('scroll', this.onScroll, PASSIVE);
-          prev.removeEventListener('mousewheel', NOOP);
-          prev.removeEventListener('wheel', this.onWheel, PASSIVE);
+          prev.removeEventListener('wheel', this.onWheel);
         }
-        this.scrollParent.addEventListener('wheel', this.onWheel, PASSIVE);
+        this.scrollParent.addEventListener('wheel', this.onWheel);
         this.scrollParent.addEventListener('scroll', this.onScroll, PASSIVE);
-        this.scrollParent.addEventListener('mousewheel', NOOP);
       }
     }, {
       key: 'updateSimpleFrame',
